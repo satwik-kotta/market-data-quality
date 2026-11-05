@@ -55,16 +55,19 @@ def yahoo(tickers: list[str]) -> pl.DataFrame:
     frames = []
     for i in range(0, len(tickers), 100):
         batch = tickers[i:i + 100]
+        # threads=False avoids yfinance's shared cache database locking up under parallel downloads
         wide = yf.download([yahoo_symbol(t) for t in batch], start=PRICE_START.isoformat(),
                            end=(date.today() + timedelta(days=1)).isoformat(), auto_adjust=False, actions=True,
-                           group_by="ticker", threads=True, progress=False)
+                           group_by="ticker", threads=False, progress=False)
         for t in batch:
             sym = yahoo_symbol(t)
             if sym not in wide.columns.get_level_values(0):
                 continue
             g = wide[sym].reset_index()
             g.columns = [str(c).lower().replace(" ", "_") for c in g.columns]
-            frames.append(pl.from_pandas(g).with_columns(pl.lit(t).alias("ticker")))
+            g = g.dropna(subset=["close"]) if "close" in g.columns else g
+            if len(g):
+                frames.append(pl.from_pandas(g).with_columns(pl.lit(t).alias("ticker")))
         time.sleep(1)
     df = pl.concat(frames, how="diagonal_relaxed")
     df = df.rename({"stock_splits": "splits"}) if "stock_splits" in df.columns else df
@@ -82,6 +85,8 @@ def stooq(tickers: list[str]) -> pl.DataFrame:
             failed.append(t)
             continue
         if not body.startswith(b"Date"):
+            if not failed:
+                print(f"stooq sample response for {t}: {body[:300]!r}")
             failed.append(t)  # "No data" or a rate limit message
             if b"limit" in body.lower():
                 print("Stooq rate limit reached", file=sys.stderr)
