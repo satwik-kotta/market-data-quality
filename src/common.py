@@ -15,7 +15,8 @@ PRICE_START = date(2023, 1, 1)
 FILING_START = date(2024, 1, 1)
 
 # SEC asks automated clients to identify themselves. Set SEC_USER_AGENT to "Name email" to follow that fully.
-SEC_USER_AGENT = (os.environ.get("SEC_USER_AGENT")
+# Collapse whitespace so a pasted secret with a trailing newline is still a valid header.
+SEC_USER_AGENT = (" ".join((os.environ.get("SEC_USER_AGENT") or "").split())
                   or "market-data-quality research project github.com/satwik-kotta/market-data-quality")
 
 
