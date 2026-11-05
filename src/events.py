@@ -84,6 +84,8 @@ def ols(y: np.ndarray, X: np.ndarray, names: list[str], cluster: np.ndarray | No
 def item_effects(panel: pl.DataFrame, ar: pl.DataFrame) -> dict:
     """How much larger is the event day move, in absolute terms, for each kind of 8-K."""
     d, keep = item_dummies(panel.filter(pl.col("abs_ar0").is_not_null()))
+    if not keep:
+        return {"items": [], "note": "too few filings per item type"}
     cols = [f"item_{i}" for i in keep]
     fit = ols(d["abs_ar0"].to_numpy() * 100, d.select(cols).to_numpy().astype(float), keep,
               cluster=d["ticker"].to_numpy())

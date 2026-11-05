@@ -10,6 +10,7 @@ Each source is written to data/raw as parquet. Vendor data is stored exactly as 
 cleaning happens later and can be checked.
 """
 import io
+import json
 import re
 import sys
 import time
@@ -119,50 +120,75 @@ def html_to_text(html: str) -> str:
     return SPACE.sub(" ", unescape(TAG.sub(" ", html))).strip()
 
 
-def filings(uni: pl.DataFrame, max_per_company: int = 60) -> pl.DataFrame:
+class RateLimit:
+    """Shared limit across threads: at most `per_second` requests start each second."""
+
+    def __init__(self, per_second: float):
+        import threading
+
+        self.gap = 1.0 / per_second
+        self.lock = threading.Lock()
+        self.next = time.monotonic()
+
+    def wait(self) -> None:
+        with self.lock:
+            now = time.monotonic()
+            start = max(now, self.next)
+            self.next = start + self.gap
+        time.sleep(max(0.0, start - now))
+
+
+def _one_filing(meta: dict, headers: dict, limit: RateLimit, lm) -> dict:
+    row = meta | {"text_source": None, "n_words": None, "lm_positive": None, "lm_negative": None}
+    folder = f"https://www.sec.gov/Archives/edgar/data/{meta['cik']}/{meta['accession'].replace('-', '')}"
+    try:
+        # The news is usually in the attached press release (exhibit 99), not the 8-K cover form.
+        limit.wait()
+        listing = json.loads(http_get(f"{folder}/index.json", headers, retries=3))
+        names = [f["name"] for f in listing["directory"]["item"]]
+        ex99 = [n for n in names if EX99.search(n) and n.lower().endswith((".htm", ".html", ".txt"))]
+        doc = ex99[0] if ex99 else meta["document"]
+        limit.wait()
+        text = html_to_text(http_get(f"{folder}/{doc}", headers, retries=3).decode("utf-8", "ignore"))
+        tokens = lm.tokenize(text)
+        score = lm.get_score(tokens)
+        row.update(text_source="exhibit_99" if ex99 else "form", n_words=len(tokens),
+                   lm_positive=int(score["Positive"]), lm_negative=int(score["Negative"]))
+    except Exception as e:
+        print(f"document failed {meta['ticker']} {meta['accession']}: {e}", file=sys.stderr)
+    return row
+
+
+def filings(uni: pl.DataFrame, max_per_company: int = 60, workers: int = 8) -> pl.DataFrame:
+    from concurrent.futures import ThreadPoolExecutor
+
     import pysentiment2 as ps
 
     lm = ps.LM()
     headers = {"User-Agent": SEC_USER_AGENT, "Accept-Encoding": "identity"}
-    rows = []
-    for k, (ticker, cik) in enumerate(uni.select("ticker", "cik").iter_rows()):
+    limit = RateLimit(9)  # SEC allows 10 requests per second
+    metas = []
+    for ticker, cik in uni.select("ticker", "cik").iter_rows():
+        limit.wait()
         try:
-            sub = __import__("json").loads(http_get(f"https://data.sec.gov/submissions/CIK{cik:010d}.json", headers))
+            r = json.loads(http_get(f"https://data.sec.gov/submissions/CIK{cik:010d}.json", headers))["filings"]["recent"]
         except Exception as e:
             print(f"submissions failed {ticker}: {e}", file=sys.stderr)
             continue
-        time.sleep(0.12)
-        r = sub["filings"]["recent"]
         taken = 0
         for i, form in enumerate(r["form"]):
-            if form != "8-K" or r["filingDate"][i] < FILING_START.isoformat() or taken >= max_per_company:
-                continue
-            acc = r["accessionNumber"][i]
-            row = {
-                "ticker": ticker, "cik": cik, "accession": acc, "filing_date": r["filingDate"][i],
-                "accepted": r["acceptanceDateTime"][i], "items": r["items"][i], "document": r["primaryDocument"][i],
-                "text_source": None, "n_words": None, "lm_positive": None, "lm_negative": None,
-            }
-            folder = f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc.replace('-', '')}"
-            try:
-                # The news is usually in the attached press release (exhibit 99), not the 8-K cover form.
-                listing = __import__("json").loads(http_get(f"{folder}/index.json", headers, retries=2))
-                time.sleep(0.12)
-                names = [f["name"] for f in listing["directory"]["item"]]
-                ex99 = [n for n in names if EX99.search(n) and n.lower().endswith((".htm", ".html", ".txt"))]
-                doc = ex99[0] if ex99 else r["primaryDocument"][i]
-                row["text_source"] = "exhibit_99" if ex99 else "form"
-                text = html_to_text(http_get(f"{folder}/{doc}", headers, retries=2).decode("utf-8", "ignore"))
-                tokens = lm.tokenize(text)
-                score = lm.get_score(tokens)
-                row.update(n_words=len(tokens), lm_positive=int(score["Positive"]), lm_negative=int(score["Negative"]))
-            except Exception as e:
-                print(f"document failed {ticker} {acc}: {e}", file=sys.stderr)
+            if form == "8-K" and r["filingDate"][i] >= FILING_START.isoformat() and taken < max_per_company:
+                metas.append({"ticker": ticker, "cik": cik, "accession": r["accessionNumber"][i],
+                              "filing_date": r["filingDate"][i], "accepted": r["acceptanceDateTime"][i],
+                              "items": r["items"][i], "document": r["primaryDocument"][i]})
+                taken += 1
+    print(f"filings: {len(metas)} 8-Ks listed, downloading text")
+    with ThreadPoolExecutor(workers) as pool:
+        rows = []
+        for k, row in enumerate(pool.map(lambda m: _one_filing(m, headers, limit, lm), metas)):
             rows.append(row)
-            taken += 1
-            time.sleep(0.12)  # stay under SEC's 10 requests per second
-        if k % 50 == 0:
-            print(f"filings: {k} companies, {len(rows)} 8-Ks")
+            if k % 1000 == 0:
+                print(f"filings: {k} done")
     df = pl.DataFrame(rows, infer_schema_length=None)
     df.write_parquet(RAW / "filings.parquet")
     return df
