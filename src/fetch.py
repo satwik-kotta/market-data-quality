@@ -2,7 +2,7 @@
 
     universe   S&P 500 members with CIK numbers (datasets/s-and-p-500-companies on GitHub)
     yahoo      daily OHLCV, split adjusted close, adjusted close, dividends and splits (yfinance)
-    stooq      daily OHLCV from Stooq's CSV endpoint
+    nasdaq     daily OHLCV from Nasdaq's public quote API
     filings    every 8-K filed by those companies since FILING_START, from SEC EDGAR, with
                Loughran-McDonald word counts taken from the filing text (the text itself is not stored)
 
@@ -20,7 +20,7 @@ from html import unescape
 import polars as pl
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent))
-from common import FILING_START, PRICE_START, RAW, SEC_USER_AGENT, stooq_symbol, yahoo_symbol  # noqa: E402
+from common import FILING_START, PRICE_START, RAW, SEC_USER_AGENT, yahoo_symbol  # noqa: E402
 
 UNIVERSE_URL = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv"
 
@@ -75,30 +75,37 @@ def yahoo(tickers: list[str]) -> pl.DataFrame:
     return df
 
 
-def stooq(tickers: list[str]) -> pl.DataFrame:
+def nasdaq(tickers: list[str]) -> pl.DataFrame:
+    """Daily history from Nasdaq's public quote API. Prices arrive as text like "$1,234.56"."""
+    import json
+
+    headers = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+               "Accept": "application/json, text/plain, */*", "Origin": "https://www.nasdaq.com",
+               "Referer": "https://www.nasdaq.com/"}
     frames, failed = [], []
     for t in tickers:
-        url = f"https://stooq.com/q/d/l/?s={stooq_symbol(t)}&i=d&d1={PRICE_START:%Y%m%d}&d2={date.today():%Y%m%d}"
+        url = (f"https://api.nasdaq.com/api/quote/{t.replace('.', '%5E')}/historical?assetclass=stocks"
+               f"&fromdate={PRICE_START.isoformat()}&todate={date.today().isoformat()}&limit=9999")
         try:
-            body = http_get(url, retries=2)
-        except Exception:
+            body = json.loads(http_get(url, headers, retries=3, timeout=40))
+            rows = ((body.get("data") or {}).get("tradesTable") or {}).get("rows") or []
+        except Exception as e:
+            if not failed:
+                print(f"nasdaq sample error for {t}: {e}")
             failed.append(t)
             continue
-        if not body.startswith(b"Date"):
+        if not rows:
             if not failed:
-                print(f"stooq sample response for {t}: {body[:300]!r}")
-            failed.append(t)  # "No data" or a rate limit message
-            if b"limit" in body.lower():
-                print("Stooq rate limit reached", file=sys.stderr)
-                break
+                print(f"nasdaq sample response for {t}: {str(body)[:300]}")
+            failed.append(t)
             continue
-        frames.append(pl.read_csv(io.BytesIO(body)).with_columns(pl.lit(t).alias("ticker")))
-        time.sleep(0.4)
-    print(f"stooq: {len(frames)} tickers, {len(failed)} failed: {failed[:20]}")
+        frames.append(pl.DataFrame(rows).with_columns(pl.lit(t).alias("ticker")))
+        time.sleep(0.5)
+    print(f"nasdaq: {len(frames)} tickers, {len(failed)} failed: {failed[:20]}")
     if not frames:
-        raise SystemExit("Stooq returned no data")
+        raise SystemExit("Nasdaq returned no data")
     df = pl.concat(frames, how="diagonal_relaxed")
-    df.write_parquet(RAW / "stooq.parquet")
+    df.write_parquet(RAW / "nasdaq.parquet")
     return df
 
 
@@ -172,7 +179,7 @@ def main(parts: list[str]) -> None:
     print(f"universe: {len(tickers)} tickers")
     if "prices" in parts:
         print(f"yahoo: {yahoo(tickers).height} rows")
-        print(f"stooq: {stooq(tickers).height} rows")
+        print(f"nasdaq: {nasdaq(tickers).height} rows")
     if "filings" in parts:
         print(f"filings: {filings(uni).height} 8-Ks")
 
