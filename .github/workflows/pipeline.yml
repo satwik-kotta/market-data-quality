@@ -6,6 +6,9 @@ on:
         description: "Download fresh data (false reuses the data branch)"
         type: boolean
         default: true
+      limit:
+        description: "Only use the first N tickers (0 = all), for trial runs"
+        default: "0"
   schedule:
     - cron: "23 6 * * 0"   # weekly, Sunday morning UTC
 permissions:
@@ -31,9 +34,10 @@ jobs:
         if: ${{ github.event_name == 'schedule' || inputs.fetch }}
         env:
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+          LIMIT: ${{ inputs.limit }}
         run: python src/fetch.py prices filings
       - name: Save raw data to the data branch
-        if: ${{ github.event_name == 'schedule' || inputs.fetch }}
+        if: ${{ github.event_name == 'schedule' || (inputs.fetch && inputs.limit == '0') }}
         run: |
           git config user.name "pipeline-bot"
           git config user.email "pipeline-bot@users.noreply.github.com"
@@ -51,6 +55,7 @@ jobs:
           git reset -q
       - run: python src/run_all.py
       - name: Commit outputs
+        if: ${{ github.event_name == 'schedule' || inputs.limit == '0' }}
         run: |
           git config user.name "pipeline-bot"
           git config user.email "pipeline-bot@users.noreply.github.com"

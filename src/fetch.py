@@ -89,7 +89,9 @@ def stooq(tickers: list[str]) -> pl.DataFrame:
             continue
         frames.append(pl.read_csv(io.BytesIO(body)).with_columns(pl.lit(t).alias("ticker")))
         time.sleep(0.4)
-    print(f"stooq: {len(frames)} tickers, {len(failed)} failed")
+    print(f"stooq: {len(frames)} tickers, {len(failed)} failed: {failed[:20]}")
+    if not frames:
+        raise SystemExit("Stooq returned no data")
     df = pl.concat(frames, how="diagonal_relaxed")
     df.write_parquet(RAW / "stooq.parquet")
     return df
@@ -157,6 +159,10 @@ def filings(uni: pl.DataFrame, max_per_company: int = 60) -> pl.DataFrame:
 def main(parts: list[str]) -> None:
     RAW.mkdir(parents=True, exist_ok=True)
     uni = universe()
+    limit = int(__import__("os").environ.get("LIMIT") or 0)
+    if limit:  # small trial runs
+        uni = uni.head(limit)
+        uni.write_parquet(RAW / "universe.parquet")
     tickers = uni["ticker"].to_list()
     print(f"universe: {len(tickers)} tickers")
     if "prices" in parts:
