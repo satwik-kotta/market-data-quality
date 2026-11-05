@@ -112,7 +112,8 @@ def nasdaq(tickers: list[str]) -> pl.DataFrame:
 
 TAG = re.compile(r"<[^>]+>")
 SPACE = re.compile(r"\s+")
-EX99 = re.compile(r"ex-?_?99", re.I)
+# Press release exhibits are named many ways: ex99.htm, ex-99_1.htm, exhibit991.htm, a991pressrelease.htm ...
+EX99 = re.compile(r"(ex|exh|exhibit)[-_ ]?99|(^|[^0-9])99[-_.]?1[^0-9]|press[-_ ]?release|earnings[-_ ]?release", re.I)
 
 
 def html_to_text(html: str) -> str:
@@ -146,7 +147,8 @@ def _one_filing(meta: dict, headers: dict, limit: RateLimit, lm) -> dict:
         limit.wait()
         listing = json.loads(http_get(f"{folder}/index.json", headers, retries=3))
         names = [f["name"] for f in listing["directory"]["item"]]
-        ex99 = [n for n in names if EX99.search(n) and n.lower().endswith((".htm", ".html", ".txt"))]
+        ex99 = [n for n in names if n != meta["document"] and EX99.search(n)
+                and n.lower().endswith((".htm", ".html", ".txt"))]
         doc = ex99[0] if ex99 else meta["document"]
         limit.wait()
         text = html_to_text(http_get(f"{folder}/{doc}", headers, retries=3).decode("utf-8", "ignore"))
