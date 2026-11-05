@@ -129,7 +129,11 @@ def compare_vendors(y: pl.DataFrame, n: pl.DataFrame) -> tuple[pl.DataFrame, pl.
         gap = pl.when(c("nasdaq_convention") == name).then(c(col)).otherwise(gap)
     daily = both.join(conv.select("ticker", "nasdaq_convention"), on="ticker", how="left").with_columns(
         pl.when(c("nasdaq_convention") == "unclear").then(c("lr_close")).otherwise(gap).alias("gap")
-    ).with_columns((c("gap").abs() > MISMATCH_TOL).alias("mismatch"))
+    ).sort(["ticker", "date"]).with_columns(
+        (c("gap").abs() > MISMATCH_TOL).alias("mismatch"),
+        # A constant gap means one vendor scaled its history (a spin-off, say) and the daily moves still agree.
+        (c("gap") - c("gap").shift(1).over("ticker")).alias("return_gap"),
+    ).with_columns((c("return_gap").abs() > MISMATCH_TOL).fill_null(True).alias("return_mismatch"))
     return conv, daily
 
 
@@ -137,23 +141,25 @@ def clean_table(y: pl.DataFrame, n: pl.DataFrame, issues_y: pl.DataFrame, daily:
     """Yahoo prices with a status per row, and returns only where both ends of the move are usable.
 
     confirmed      Nasdaq agrees within 0.5%
+    offset         the price levels differ but the daily move agrees within 0.5%, so one vendor scaled its history
     single_source  Nasdaq has no row for that day
-    conflict       the vendors disagree by more than 0.5%
+    conflict       the vendors disagree by more than 0.5% on the level and on the daily move
     rejected       a severe check failed on the Yahoo row
     """
     c = pl.col
     severe = issues_y.filter(c("check").is_in(list(SEVERE))).select("ticker", "date").unique().with_columns(
         pl.lit(True).alias("_severe"))
-    out = (y.join(daily.select("ticker", "date", "gap", "mismatch"), on=["ticker", "date"], how="left", maintain_order="left")
+    out = (y.join(daily.select("ticker", "date", "gap", "mismatch", "return_mismatch"), on=["ticker", "date"], how="left", maintain_order="left")
             .join(severe, on=["ticker", "date"], how="left", maintain_order="left")
             .with_columns(
                 pl.when(c("_severe").fill_null(False)).then(pl.lit("rejected"))
                 .when(c("mismatch").is_null()).then(pl.lit("single_source"))
+                .when(c("mismatch") & ~c("return_mismatch")).then(pl.lit("offset"))
                 .when(c("mismatch")).then(pl.lit("conflict"))
                 .otherwise(pl.lit("confirmed")).alias("status"))
-            .drop("_severe")
+            .drop("_severe", "return_mismatch")
             .sort(["ticker", "date"]))
-    usable = c("status").is_in(["confirmed", "single_source"])
+    usable = c("status").is_in(["confirmed", "offset", "single_source"])
     return out.with_columns(
         pl.when(usable & usable.shift(1).over("ticker"))
         .then(c("adj_close") / c("adj_close").shift(1).over("ticker") - 1).alias("ret")

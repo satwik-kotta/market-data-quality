@@ -1,0 +1,359 @@
+{
+  "universe": 503,
+  "sessions": {
+    "first": "2023-01-03",
+    "last": "2026-11-04",
+    "count": 964
+  },
+  "vendors": {
+    "yahoo": {
+      "rows_received": 480394,
+      "rows_without_close": 0,
+      "duplicate_rows": 0,
+      "rows_kept": 480394,
+      "tickers": 503
+    },
+    "nasdaq": {
+      "rows_received": 476900,
+      "rows_without_close": 0,
+      "duplicate_rows": 0,
+      "rows_kept": 476900,
+      "tickers": 501
+    }
+  },
+  "tickers_both_vendors": 501,
+  "row_issues": [
+    {
+      "vendor": "nasdaq",
+      "check": "stale_price",
+      "rows": 92,
+      "tickers": 1
+    },
+    {
+      "vendor": "nasdaq",
+      "check": "return_outlier",
+      "rows": 88,
+      "tickers": 56
+    },
+    {
+      "vendor": "nasdaq",
+      "check": "ohlc_inconsistent",
+      "rows": 87,
+      "tickers": 87
+    },
+    {
+      "vendor": "yahoo",
+      "check": "zero_volume",
+      "rows": 198,
+      "tickers": 1
+    },
+    {
+      "vendor": "yahoo",
+      "check": "stale_price",
+      "rows": 137,
+      "tickers": 1
+    },
+    {
+      "vendor": "yahoo",
+      "check": "return_outlier",
+      "rows": 90,
+      "tickers": 56
+    }
+  ],
+  "nasdaq_convention": [
+    {
+      "nasdaq_convention": "split_adjusted",
+      "tickers": 490
+    },
+    {
+      "nasdaq_convention": "unclear",
+      "tickers": 11
+    }
+  ],
+  "days_compared": 476895,
+  "mismatch_days": 8688,
+  "mismatch_tickers": 19,
+  "return_conflict_days": 140,
+  "yahoo_fractional_split_records": 23,
+  "breaks_ending_before_fractional_split": 14,
+  "breaks_with_100_plus_days": 16,
+  "volume_ratio_median": 1.0000081503350808,
+  "clean_status": [
+    {
+      "status": "confirmed",
+      "rows": 468207
+    },
+    {
+      "status": "offset",
+      "rows": 8548
+    },
+    {
+      "status": "single_source",
+      "rows": 2996
+    },
+    {
+      "status": "conflict",
+      "rows": 140
+    }
+  ],
+  "returns_usable": 479200,
+  "filings": {
+    "eight_ks": 17051,
+    "with_text": 16960,
+    "press_release_text": 9131,
+    "matched_to_returns": 16961
+  },
+  "item_effects": {
+    "normal_day_abs_ar_pct": 1.2435254210437545,
+    "all_8k_abs_ar_pct": 2.783753743767799,
+    "items": [
+      {
+        "item": "2.02",
+        "name": "Earnings results",
+        "filings": 5999,
+        "mean_abs_move_pct": 4.995832378464367,
+        "times_normal_day": 4.017475070409987,
+        "extra_move_pts": 3.5288042147127907,
+        "ci": [
+          3.2750375215434655,
+          3.782570907882116
+        ]
+      },
+      {
+        "item": "7.01",
+        "name": "Reg FD disclosure",
+        "filings": 4140,
+        "mean_abs_move_pct": 2.7029924081507803,
+        "times_normal_day": 2.1736527154242014,
+        "extra_move_pts": 0.18034262642611526,
+        "ci": [
+          -0.06239017181343548,
+          0.423075424665666
+        ]
+      },
+      {
+        "item": "8.01",
+        "name": "Other events",
+        "filings": 3873,
+        "mean_abs_move_pct": 2.0350948251307535,
+        "times_normal_day": 1.636552651591629,
+        "extra_move_pts": 0.1990233793117809,
+        "ci": [
+          -0.017378650573382837,
+          0.41542540919694465
+        ]
+      },
+      {
+        "item": "1.01",
+        "name": "Material agreement",
+        "filings": 1737,
+        "mean_abs_move_pct": 1.8290771115711435,
+        "times_normal_day": 1.4708803540468882,
+        "extra_move_pts": 0.6757296302678155,
+        "ci": [
+          0.3286695086736845,
+          1.0227897518619464
+        ]
+      },
+      {
+        "item": "5.02",
+        "name": "Executive or director change",
+        "filings": 3335,
+        "mean_abs_move_pct": 1.7356445348812766,
+        "times_normal_day": 1.3957451174777442,
+        "extra_move_pts": 0.13818650354804798,
+        "ci": [
+          -0.02747305137476308,
+          0.30384605847085905
+        ]
+      },
+      {
+        "item": "5.03",
+        "name": "Bylaws change",
+        "filings": 496,
+        "mean_abs_move_pct": 1.687194249038641,
+        "times_normal_day": 1.3567830785658506,
+        "extra_move_pts": 0.06790581223557153,
+        "ci": [
+          -0.14787610447229377,
+          0.2836877289434368
+        ]
+      },
+      {
+        "item": "1.02",
+        "name": "Agreement ended",
+        "filings": 214,
+        "mean_abs_move_pct": 1.5644825923593904,
+        "times_normal_day": 1.2581026216948907,
+        "extra_move_pts": -0.01676142094556093,
+        "ci": [
+          -0.27741565399084234,
+          0.24389281209972047
+        ]
+      },
+      {
+        "item": "2.03",
+        "name": "New debt",
+        "filings": 1171,
+        "mean_abs_move_pct": 1.4619455699462165,
+        "times_normal_day": 1.1756459057500657,
+        "extra_move_pts": -0.64831016599648,
+        "ci": [
+          -0.9604583708258874,
+          -0.3361619611670726
+        ]
+      },
+      {
+        "item": "5.07",
+        "name": "Shareholder vote results",
+        "filings": 1468,
+        "mean_abs_move_pct": 1.2957592710631602,
+        "times_normal_day": 1.0420046499536482,
+        "extra_move_pts": -0.21873397831534327,
+        "ci": [
+          -0.3851877344516304,
+          -0.052280222179056146
+        ]
+      }
+    ],
+    "fit_n": 16961
+  },
+  "tone_all": {
+    "item": null,
+    "filings": 16763,
+    "split_date": "2025-10-10",
+    "tercile_edges": [
+      -1.0170066105429687,
+      0.0
+    ],
+    "earlier": {
+      "event_day": {
+        "spread_pct": 0.09624109857460583,
+        "ci_pct": [
+          -0.11263242716715144,
+          0.32017574766497864
+        ],
+        "n_top": 4152,
+        "n_bottom": 3350
+      },
+      "next_5_days": {
+        "spread_pct": -0.06323042548811068,
+        "ci_pct": [
+          -0.2545181982503777,
+          0.12300185428905429
+        ],
+        "n_top": 4152,
+        "n_bottom": 3350
+      },
+      "placebo_5_days_before": {
+        "spread_pct": -0.1755763882221257,
+        "ci_pct": [
+          -0.35593431942099557,
+          0.016557638204492502
+        ],
+        "n_top": 4152,
+        "n_bottom": 3350
+      },
+      "rank_corr_event_day": -0.003069285583371266
+    },
+    "later": {
+      "event_day": {
+        "spread_pct": -0.13311691160495853,
+        "ci_pct": [
+          -0.41646468051385427,
+          0.14138628980466722
+        ],
+        "n_top": 2906,
+        "n_bottom": 2081
+      },
+      "next_5_days": {
+        "spread_pct": -0.03408841509695788,
+        "ci_pct": [
+          -0.32759744183465894,
+          0.26505160316782445
+        ],
+        "n_top": 2906,
+        "n_bottom": 2081
+      },
+      "placebo_5_days_before": {
+        "spread_pct": -0.10657151026881191,
+        "ci_pct": [
+          -0.38000138161892966,
+          0.15931927287252468
+        ],
+        "n_top": 2906,
+        "n_bottom": 2081
+      },
+      "rank_corr_event_day": -0.006663843203915908
+    }
+  },
+  "tone_earnings": {
+    "item": "2.02",
+    "filings": 5978,
+    "split_date": "2025-10-22",
+    "tercile_edges": [
+      -1.270718232044199,
+      -0.16835016835016833
+    ],
+    "earlier": {
+      "event_day": {
+        "spread_pct": 0.14238120842114443,
+        "ci_pct": [
+          -0.4400028081777112,
+          0.7099423253881635
+        ],
+        "n_top": 1193,
+        "n_bottom": 1193
+      },
+      "next_5_days": {
+        "spread_pct": -0.033139790005348106,
+        "ci_pct": [
+          -0.3916342267851403,
+          0.31753748568782314
+        ],
+        "n_top": 1193,
+        "n_bottom": 1193
+      },
+      "placebo_5_days_before": {
+        "spread_pct": 0.09928540610734089,
+        "ci_pct": [
+          -0.193113431282656,
+          0.38082667172437423
+        ],
+        "n_top": 1193,
+        "n_bottom": 1193
+      },
+      "rank_corr_event_day": -0.0019397484416533025
+    },
+    "later": {
+      "event_day": {
+        "spread_pct": -0.20217482694214706,
+        "ci_pct": [
+          -0.9047195554647735,
+          0.48583938298474033
+        ],
+        "n_top": 854,
+        "n_bottom": 745
+      },
+      "next_5_days": {
+        "spread_pct": -0.2751740627916696,
+        "ci_pct": [
+          -0.8142682223774002,
+          0.2428304612027709
+        ],
+        "n_top": 854,
+        "n_bottom": 745
+      },
+      "placebo_5_days_before": {
+        "spread_pct": -0.2522512059723937,
+        "ci_pct": [
+          -0.6797788126871848,
+          0.19738115406315201
+        ],
+        "n_top": 854,
+        "n_bottom": 745
+      },
+      "rank_corr_event_day": 0.00453057776131749
+    }
+  }
+}

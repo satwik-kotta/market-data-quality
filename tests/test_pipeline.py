@@ -120,3 +120,18 @@ def test_event_panel_aligns_window():
     assert p["ar_0"] == 0.10 and p["ar_m1"] == 0.09 and p["ar_5"] == 0.15
     assert abs(p["car_post"] - sum(k / 100 for k in range(11, 16))) < 1e-12
     assert abs(p["tone"] - 2.0) < 1e-12
+
+
+def test_constant_offset_is_not_a_conflict():
+    """A vendor that scales all history before a spin-off disagrees on levels but agrees on daily moves."""
+    y, _ = quality.normalize_yahoo(fake_yahoo("AAA", 3, div_yield_daily=0.0))
+    d = y["date"]
+    n, _ = quality.normalize_nasdaq(fake_nasdaq(y, "close").rename({"Close/Last": "Close"}))
+    n = n.with_columns(
+        pl.when(pl.col("date") < d[60]).then(pl.col("close") * 1.2).otherwise(pl.col("close")).alias("close"))
+    conv, daily = quality.compare_vendors(y, n)
+    clean = quality.clean_table(y, n, quality.row_checks(y, SESS), daily)
+    st = dict(clean.select("date", "status").iter_rows())
+    assert st[d[10]] == "offset" and st[d[70]] == "confirmed"
+    assert st[d[0]] == "conflict"  # nothing to compare the first move against
+    assert clean.filter(pl.col("date") == d[10])["ret"].item() is not None

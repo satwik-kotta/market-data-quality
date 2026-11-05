@@ -41,6 +41,18 @@ def main() -> None:
     panel = events.event_panel(ev, ar)
     panel.write_parquet(PROC / "event_panel.parquet")
 
+    # Where the vendors disagree on levels, find the session the gap ends and what Yahoo recorded the next day.
+    nxt = pl.DataFrame({"date": sess, "next_session": sess.shift(-1)})
+    odd_splits = splits.filter((pl.col("splits") - pl.col("splits").round()).abs() > 1e-9)
+    breaks = (daily.filter(pl.col("mismatch")).group_by("ticker")
+              .agg(pl.len().alias("days"), pl.col("date").max().alias("last_mismatch"),
+                   pl.col("gap").median().alias("median_gap"), pl.col("return_mismatch").sum().alias("return_conflicts"))
+              .join(nxt, left_on="last_mismatch", right_on="date", how="left")
+              .join(odd_splits.rename({"date": "next_session", "splits": "yahoo_ratio"}),
+                    on=["ticker", "next_session"], how="left")
+              .sort("days", descending=True))
+    breaks.write_csv(OUT / "level_breaks.csv")
+
     by_check = issues.group_by(["vendor", "check"]).agg(pl.len().alias("rows"), pl.col("ticker").n_unique().alias("tickers")).sort(["vendor", "rows"], descending=[False, True])
     status = clean.group_by("status").agg(pl.len().alias("rows")).sort("rows", descending=True)
     results = {
@@ -53,6 +65,10 @@ def main() -> None:
         "days_compared": daily.height,
         "mismatch_days": int(daily["mismatch"].sum()),
         "mismatch_tickers": int(daily.filter(pl.col("mismatch"))["ticker"].n_unique()),
+        "return_conflict_days": int((daily["mismatch"] & daily["return_mismatch"]).sum()),
+        "yahoo_fractional_split_records": odd_splits.height,
+        "breaks_ending_before_fractional_split": int(breaks["yahoo_ratio"].is_not_null().sum()),
+        "breaks_with_100_plus_days": int((breaks["days"] >= 100).sum()),
         "volume_ratio_median": float(conv["volume_ratio"].median()),
         "clean_status": status.to_dicts(),
         "returns_usable": int(clean["ret"].is_not_null().sum()),

@@ -41,12 +41,14 @@ jobs:
         run: |
           git config user.name "pipeline-bot"
           git config user.email "pipeline-bot@users.noreply.github.com"
+          cp -r data/raw "$RUNNER_TEMP/raw"
           git checkout --orphan data-tmp
           git rm -r -q --cached .
           git add -f data/raw/*.parquet
           git commit -q -m "Raw data $(date -u +%Y-%m-%d)"
           git push -f origin data-tmp:data
           git checkout -q -f main
+          mkdir -p data/raw && cp "$RUNNER_TEMP"/raw/*.parquet data/raw/
       - name: Reuse raw data
         if: ${{ github.event_name != 'schedule' && !inputs.fetch }}
         run: |
