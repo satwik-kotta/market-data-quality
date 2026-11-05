@@ -26,11 +26,11 @@ def fake_yahoo(ticker="AAA", seed=0, div_yield_daily=0.0001):
     })
 
 
-def fake_stooq(y: pl.DataFrame, dividend_adjusted=True):
-    col = "adj_close" if dividend_adjusted else "close"
-    return y.select(pl.col("date").dt.strftime("%Y-%m-%d").alias("Date"), pl.col("ticker"),
-                    pl.col("open").alias("Open"), pl.col("high").alias("High"), pl.col("low").alias("Low"),
-                    pl.col(col).alias("Close"), pl.col("volume").alias("Volume"))
+def fake_nasdaq(y: pl.DataFrame, series="adj_close"):
+    money = lambda c: pl.format("${}", pl.col(c).round(4))  # noqa: E731
+    return y.select(pl.col("date").dt.strftime("%m/%d/%Y").alias("Date"), pl.col("ticker"),
+                    money("open").alias("Open"), money("high").alias("High"), money("low").alias("Low"),
+                    money(series).alias("Close/Last"), pl.col("volume").cast(pl.Int64).cast(pl.Utf8).alias("Volume"))
 
 
 def test_normalize_drops_duplicates_and_nulls():
@@ -77,19 +77,27 @@ def test_split_day_is_not_an_outlier():
 def test_vendor_convention_and_mismatch():
     y1, _ = quality.normalize_yahoo(fake_yahoo("AAA", 1, div_yield_daily=0.0002))
     y2, _ = quality.normalize_yahoo(fake_yahoo("BBB", 2, div_yield_daily=0.0002))
-    y = pl.concat([y1, y2])
-    s = pl.concat([fake_stooq(y1, True), fake_stooq(y2, False)])
+    # CCC had a 2 for 1 split. Yahoo's close is split adjusted, Nasdaq shows the price as it traded.
+    y3, _ = quality.normalize_yahoo(fake_yahoo("CCC", 3))
+    split_day = y3["date"][60]
+    y3 = y3.with_columns(pl.when(pl.col("date") == split_day).then(2.0).otherwise(0.0).alias("splits"))
+    traded = y3.with_columns(pl.when(pl.col("date") < split_day).then(pl.col("close") * 2)
+                             .otherwise(pl.col("close")).alias("traded"))
+    y = pl.concat([y1, y2, y3])
+    raw = pl.concat([fake_nasdaq(y1, "adj_close"), fake_nasdaq(y2, "close"), fake_nasdaq(traded, "traded")])
     bad_day = y1["date"][50]
-    s = s.with_columns(pl.when((pl.col("ticker") == "AAA") & (pl.col("Date") == str(bad_day)))
-                       .then(pl.col("Close") * 1.02).otherwise(pl.col("Close")).alias("Close"))
-    s, _ = quality.normalize_stooq(s)
-    conv, daily = quality.compare_vendors(y, s)
-    c = dict(conv.select("ticker", "stooq_convention").iter_rows())
-    assert c == {"AAA": "dividend_adjusted", "BBB": "split_adjusted"}
+    raw = raw.with_columns(
+        pl.when((pl.col("ticker") == "AAA") & (pl.col("Date") == bad_day.strftime("%m/%d/%Y")))
+        .then(pl.lit("$999.00")).otherwise(pl.col("Close/Last")).alias("Close/Last"))
+    n, _ = quality.normalize_nasdaq(raw.rename({"Close/Last": "Close"}))
+    assert n["close"].dtype == pl.Float64 and n["volume"].null_count() == 0
+    conv, daily = quality.compare_vendors(y, n)
+    c = dict(conv.select("ticker", "nasdaq_convention").iter_rows())
+    assert c == {"AAA": "dividend_adjusted", "BBB": "split_adjusted", "CCC": "unadjusted"}
     mism = daily.filter(pl.col("mismatch"))
     assert mism.select("ticker", "date").rows() == [("AAA", bad_day)]
 
-    clean = quality.clean_table(y, s, quality.row_checks(y, SESS), daily)
+    clean = quality.clean_table(y, n, quality.row_checks(y, SESS), daily)
     row = clean.filter((pl.col("ticker") == "AAA") & (pl.col("date") == bad_day)).row(0, named=True)
     assert row["status"] == "conflict" and row["ret"] is None
 

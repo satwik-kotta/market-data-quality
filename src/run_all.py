@@ -19,12 +19,12 @@ def main() -> None:
     uni = pl.read_parquet(RAW / "universe.parquet")
 
     y, y_log = quality.normalize_yahoo(pl.read_parquet(RAW / "yahoo.parquet"))
-    s, s_log = quality.normalize_stooq(pl.read_parquet(RAW / "stooq.parquet"))
+    s, s_log = quality.normalize_nasdaq(pl.read_parquet(RAW / "nasdaq.parquet"))
     y = y.filter(pl.col("date") <= sess.max())
     s = s.filter(pl.col("date") <= sess.max())
     splits = y.filter(pl.col("splits") > 0).select("ticker", "date", "splits")
     issues_y = quality.row_checks(y, sess).with_columns(pl.lit("yahoo").alias("vendor"))
-    issues_s = quality.row_checks(s, sess, splits).with_columns(pl.lit("stooq").alias("vendor"))
+    issues_s = quality.row_checks(s, sess, splits).with_columns(pl.lit("nasdaq").alias("vendor"))
     conv, daily = quality.compare_vendors(y, s)
     clean = quality.clean_table(y, s, issues_y, daily)
 
@@ -46,10 +46,10 @@ def main() -> None:
     results = {
         "universe": uni.height,
         "sessions": {"first": str(sess.min()), "last": str(sess.max()), "count": len(sess)},
-        "vendors": {"yahoo": y_log, "stooq": s_log},
+        "vendors": {"yahoo": y_log, "nasdaq": s_log},
         "tickers_both_vendors": conv.height,
         "row_issues": by_check.to_dicts(),
-        "stooq_convention": conv.group_by("stooq_convention").agg(pl.len().alias("tickers")).sort("tickers", descending=True).to_dicts(),
+        "nasdaq_convention": conv.group_by("nasdaq_convention").agg(pl.len().alias("tickers")).sort("tickers", descending=True).to_dicts(),
         "days_compared": daily.height,
         "mismatch_days": int(daily["mismatch"].sum()),
         "mismatch_tickers": int(daily.filter(pl.col("mismatch"))["ticker"].n_unique()),

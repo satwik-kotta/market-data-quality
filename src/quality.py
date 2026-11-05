@@ -10,8 +10,8 @@ Checks on each vendor
     missing_session       an NYSE trading day with no row, inside the ticker's own date range
 
 Checks across vendors
-    adjustment convention which Yahoo series (split adjusted close, or close adjusted for splits and
-                          dividends) the Stooq close matches, decided per ticker
+    adjustment convention which Yahoo series the Nasdaq close matches, decided per ticker: unadjusted
+                          (rebuilt from Yahoo's split history), split adjusted, or split and dividend adjusted
     price_mismatch        the two vendors disagree by more than 0.5% on the same day
 """
 import polars as pl
@@ -45,12 +45,17 @@ def normalize_yahoo(raw: pl.DataFrame) -> tuple[pl.DataFrame, dict]:
     return _finish(df, "yahoo")
 
 
-def normalize_stooq(raw: pl.DataFrame) -> tuple[pl.DataFrame, dict]:
+def _num(col: str) -> pl.Expr:
+    """Nasdaq sends numbers as text like "$1,234.56"; "N/A" becomes null."""
+    return pl.col(col).cast(pl.Utf8).str.replace_all(r"[$,]", "").str.strip_chars().cast(pl.Float64, strict=False)
+
+
+def normalize_nasdaq(raw: pl.DataFrame) -> tuple[pl.DataFrame, dict]:
     df = raw.rename({c: c.lower() for c in raw.columns}).select(
-        pl.col("date").cast(pl.Utf8).str.to_date("%Y-%m-%d"), pl.col("ticker"),
-        *[pl.col(c).cast(pl.Float64) for c in PRICE_COLS], pl.col("volume").cast(pl.Float64),
+        pl.col("date").cast(pl.Utf8).str.to_date("%m/%d/%Y"), pl.col("ticker"),
+        *[_num(c).alias(c) for c in PRICE_COLS], _num("volume").alias("volume"),
     )
-    return _finish(df, "stooq")
+    return _finish(df, "nasdaq")
 
 
 def row_checks(df: pl.DataFrame, sessions: pl.Series, splits: pl.DataFrame | None = None) -> pl.DataFrame:
@@ -61,7 +66,7 @@ def row_checks(df: pl.DataFrame, sessions: pl.Series, splits: pl.DataFrame | Non
         (c("close") != c("close").shift(1).over("ticker")).fill_null(True).cum_sum().over("ticker").alias("_run"),
     )
     d = d.with_columns(pl.len().over(["ticker", "_run"]).alias("_run_len"))
-    if splits is not None:  # use another vendor's split dates, e.g. Yahoo's for Stooq
+    if splits is not None:  # use another vendor's split dates, e.g. Yahoo's for Nasdaq
         d = d.drop("splits", strict=False).join(splits, on=["ticker", "date"], how="left", maintain_order="left")
     elif "splits" not in d.columns:
         d = d.with_columns(pl.lit(0.0).alias("splits"))
@@ -88,37 +93,51 @@ def row_checks(df: pl.DataFrame, sessions: pl.Series, splits: pl.DataFrame | Non
     return pl.concat([flagged, missing]).sort(["ticker", "date", "check"])
 
 
-def compare_vendors(y: pl.DataFrame, s: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
+# Order matters for ties: with no splits, unadjusted and split adjusted are identical, so call it split adjusted.
+CONVENTIONS = {"split_adjusted": "lr_close", "unadjusted": "lr_raw", "dividend_adjusted": "lr_adj"}
+
+
+def compare_vendors(y: pl.DataFrame, n: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Per ticker adjustment convention and daily agreement between the two vendors."""
     c = pl.col
-    both = y.select("ticker", "date", "close", "adj_close", "volume").join(
-        s.select("ticker", "date", c("close").alias("s_close"), c("volume").alias("s_volume")),
+    # Yahoo's close is split adjusted. Undo later splits to get the price as it actually traded.
+    sf = pl.when(c("splits") > 0).then(c("splits")).otherwise(1.0)
+    y = y.sort(["ticker", "date"]).with_columns(
+        (c("close") * sf.reverse().cum_prod().reverse().over("ticker") / sf).alias("raw_close"))
+    both = y.select("ticker", "date", "close", "adj_close", "raw_close", "volume").join(
+        n.select("ticker", "date", c("close").alias("n_close"), c("volume").alias("n_volume")),
         on=["ticker", "date"], how="inner",
     ).with_columns(
-        (c("s_close") / c("close")).log().alias("lr_close"),
-        (c("s_close") / c("adj_close")).log().alias("lr_adj"),
+        (c("n_close") / c("raw_close")).log().alias("lr_raw"),
+        (c("n_close") / c("close")).log().alias("lr_close"),
+        (c("n_close") / c("adj_close")).log().alias("lr_adj"),
     )
     conv = both.group_by("ticker").agg(
-        c("lr_close").abs().median().alias("med_gap_close"),
-        c("lr_adj").abs().median().alias("med_gap_adj"),
-        (c("s_volume") / c("volume")).filter(c("volume") > 0).median().alias("volume_ratio"),
+        *[c(col).abs().median().alias(f"med_gap_{name}") for name, col in CONVENTIONS.items()],
+        (c("n_volume") / c("volume")).filter(c("volume") > 0).median().alias("volume_ratio"),
         pl.len().alias("days_both"),
-    ).with_columns(
-        pl.when((c("med_gap_adj") < c("med_gap_close")) & (c("med_gap_adj") < 0.002)).then(pl.lit("dividend_adjusted"))
-        .when(c("med_gap_close") < 0.002).then(pl.lit("split_adjusted"))
-        .otherwise(pl.lit("unclear")).alias("stooq_convention")
+    )
+    gaps = [f"med_gap_{k}" for k in CONVENTIONS]
+    best = pl.concat_list(gaps).list.arg_min()
+    conv = conv.with_columns(
+        pl.when(pl.min_horizontal(gaps) < 0.002)
+        .then(best.replace_strict(dict(enumerate(CONVENTIONS)), return_dtype=pl.Utf8))
+        .otherwise(pl.lit("unclear")).alias("nasdaq_convention")
     ).sort("ticker")
-    daily = both.join(conv.select("ticker", "stooq_convention"), on="ticker", how="left").with_columns(
-        pl.when(c("stooq_convention") == "split_adjusted").then(c("lr_close")).otherwise(c("lr_adj")).alias("gap")
+    gap = pl.lit(None, dtype=pl.Float64)
+    for name, col in CONVENTIONS.items():
+        gap = pl.when(c("nasdaq_convention") == name).then(c(col)).otherwise(gap)
+    daily = both.join(conv.select("ticker", "nasdaq_convention"), on="ticker", how="left").with_columns(
+        pl.when(c("nasdaq_convention") == "unclear").then(c("lr_close")).otherwise(gap).alias("gap")
     ).with_columns((c("gap").abs() > MISMATCH_TOL).alias("mismatch"))
     return conv, daily
 
 
-def clean_table(y: pl.DataFrame, s: pl.DataFrame, issues_y: pl.DataFrame, daily: pl.DataFrame) -> pl.DataFrame:
+def clean_table(y: pl.DataFrame, n: pl.DataFrame, issues_y: pl.DataFrame, daily: pl.DataFrame) -> pl.DataFrame:
     """Yahoo prices with a status per row, and returns only where both ends of the move are usable.
 
-    confirmed      Stooq agrees within 0.5%
-    single_source  Stooq has no row for that day
+    confirmed      Nasdaq agrees within 0.5%
+    single_source  Nasdaq has no row for that day
     conflict       the vendors disagree by more than 0.5%
     rejected       a severe check failed on the Yahoo row
     """

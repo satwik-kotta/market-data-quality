@@ -32,7 +32,3 @@ def sessions(start: date = PRICE_START, end: date | None = None) -> pl.Series:
 
 def yahoo_symbol(ticker: str) -> str:
     return ticker.replace(".", "-")
-
-
-def stooq_symbol(ticker: str) -> str:
-    return ticker.replace(".", "-").lower() + ".us"
