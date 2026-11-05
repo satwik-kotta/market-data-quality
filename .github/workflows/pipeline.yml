@@ -1,0 +1,60 @@
+name: pipeline
+on:
+  workflow_dispatch:
+    inputs:
+      fetch:
+        description: "Download fresh data (false reuses the data branch)"
+        type: boolean
+        default: true
+  schedule:
+    - cron: "23 6 * * 0"   # weekly, Sunday morning UTC
+permissions:
+  contents: write
+concurrency:
+  group: pipeline
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+      - name: Download data
+        if: ${{ github.event_name == 'schedule' || inputs.fetch }}
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: python src/fetch.py prices filings
+      - name: Save raw data to the data branch
+        if: ${{ github.event_name == 'schedule' || inputs.fetch }}
+        run: |
+          git config user.name "pipeline-bot"
+          git config user.email "pipeline-bot@users.noreply.github.com"
+          git checkout --orphan data-tmp
+          git rm -r -q --cached .
+          git add -f data/raw/*.parquet
+          git commit -q -m "Raw data $(date -u +%Y-%m-%d)"
+          git push -f origin data-tmp:data
+          git checkout -q -f main
+      - name: Reuse raw data
+        if: ${{ github.event_name != 'schedule' && !inputs.fetch }}
+        run: |
+          git fetch origin data
+          git checkout origin/data -- data/raw
+          git reset -q
+      - run: python src/run_all.py
+      - name: Commit outputs
+        run: |
+          git config user.name "pipeline-bot"
+          git config user.email "pipeline-bot@users.noreply.github.com"
+          git add outputs docs
+          git commit -m "Pipeline outputs $(date -u +%Y-%m-%d)" || echo "no changes"
+          git pull --rebase
+          git push

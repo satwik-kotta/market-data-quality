@@ -1,0 +1,9 @@
+polars>=1.20
+numpy>=1.26
+pyarrow>=15
+pandas>=2.2  # only because yfinance returns pandas
+yfinance>=0.2.50
+exchange_calendars>=4.5
+pysentiment2>=0.1.1
+statsmodels>=0.14
+pytest>=8
