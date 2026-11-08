@@ -4,6 +4,7 @@ ALGN,2023-10-26,return_outlier,yahoo
 ALGN,2025-07-31,return_outlier,yahoo
 ANET,2025-01-27,return_outlier,yahoo
 APP,2024-11-07,return_outlier,yahoo
+APP,2026-11-05,return_outlier,yahoo
 AXON,2024-11-08,return_outlier,yahoo
 BAX,2025-07-31,return_outlier,yahoo
 BE,2024-11-15,return_outlier,yahoo
@@ -82,6 +83,7 @@ SMCI,2024-12-02,return_outlier,yahoo
 SMCI,2026-03-20,return_outlier,yahoo
 SMCI,2026-06-10,return_outlier,yahoo
 SNDK,2025-02-18,return_outlier,yahoo
+SNDK,2026-11-05,return_outlier,yahoo
 SNPS,2025-09-10,return_outlier,yahoo
 SW,2023-01-04,zero_volume,yahoo
 SW,2023-01-05,zero_volume,yahoo
@@ -434,6 +436,7 @@ AME,2023-06-05,ohlc_inconsistent,nasdaq
 ANET,2025-01-27,return_outlier,nasdaq
 APH,2023-06-05,ohlc_inconsistent,nasdaq
 APP,2024-11-07,return_outlier,nasdaq
+APP,2026-11-05,return_outlier,nasdaq
 APTV,2023-06-05,ohlc_inconsistent,nasdaq
 AXON,2024-11-08,return_outlier,nasdaq
 AXP,2023-06-05,ohlc_inconsistent,nasdaq
@@ -669,6 +672,7 @@ SMCI,2024-12-02,return_outlier,nasdaq
 SMCI,2026-03-20,return_outlier,nasdaq
 SMCI,2026-06-10,return_outlier,nasdaq
 SNDK,2025-02-18,return_outlier,nasdaq
+SNDK,2026-11-05,return_outlier,nasdaq
 SNPS,2025-09-10,return_outlier,nasdaq
 SWKS,2025-02-06,return_outlier,nasdaq
 SYK,2023-06-05,ohlc_inconsistent,nasdaq
